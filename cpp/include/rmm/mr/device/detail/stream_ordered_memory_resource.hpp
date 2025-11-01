@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2020-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #pragma once
 
@@ -230,13 +219,13 @@ class stream_ordered_memory_resource : public crtp<PoolResource>, public device_
   }
 
   /**
-   * @brief Deallocate memory pointed to by `p`.
+   * @brief Deallocate memory pointed to by `ptr`.
    *
-   * @param p Pointer to be deallocated
+   * @param ptr Pointer to be deallocated
    * @param size The size in bytes of the allocation to deallocate
    * @param stream The stream in which to order this deallocation
    */
-  void do_deallocate(void* ptr, std::size_t size, cuda_stream_view stream) override
+  void do_deallocate(void* ptr, std::size_t size, cuda_stream_view stream) noexcept override
   {
     RMM_LOG_TRACE("[D][stream %s][%zuB][%p]", rmm::detail::format_stream(stream), size, ptr);
 

@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2021-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #pragma once
 
@@ -19,7 +8,7 @@
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/detail/error.hpp>
 #include <rmm/detail/export.hpp>
-#include <rmm/detail/runtime_async_alloc.hpp>
+#include <rmm/detail/runtime_capabilities.hpp>
 #include <rmm/detail/thrust_namespace.h>
 #include <rmm/mr/device/cuda_async_view_memory_resource.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
@@ -48,28 +37,37 @@ class cuda_async_memory_resource final : public device_memory_resource {
   /**
    * @brief Flags for specifying memory allocation handle types.
    *
-   * @note These values are exact copies from `cudaMemAllocationHandleType`. We need to
-   * define our own enum here because the earliest CUDA runtime version that supports asynchronous
-   * memory pools (CUDA 11.2) did not support these flags, so we need a placeholder that can be
-   * used consistently in the constructor of `cuda_async_memory_resource` with all versions of
-   * CUDA >= 11.2. See the `cudaMemAllocationHandleType` docs at
+   * @note These values are exact copies from `cudaMemAllocationHandleType`. We need a placeholder
+   * that can be used consistently in the constructor of `cuda_async_memory_resource` with all
+   * supported versions of CUDA. See the `cudaMemAllocationHandleType` docs at
    * https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html and ensure the enum
    * values are kept in sync with the CUDA documentation.
+   *
+   * @note cudaMemHandleTypeFabric can be used instead of 0x8 once we require
+   * CUDA 12.4+.
    */
   enum class allocation_handle_type : std::int32_t {
-    none                  = 0x0,  ///< Does not allow any export mechanism.
-    posix_file_descriptor = 0x1,  ///< Allows a file descriptor to be used for exporting. Permitted
-                                  ///< only on POSIX systems.
-    win32     = 0x2,              ///< Allows a Win32 NT handle to be used for exporting. (HANDLE)
-    win32_kmt = 0x4,  ///< Allows a Win32 KMT handle to be used for exporting. (D3DKMT_HANDLE)
-    fabric    = 0x8   ///< Allows a fabric handle to be used for exporting. (cudaMemFabricHandle_t)
+    none = cudaMemHandleTypeNone,  ///< Does not allow any export mechanism.
+    posix_file_descriptor =
+      cudaMemHandleTypePosixFileDescriptor,  ///< Allows a file descriptor to be used for exporting.
+                                             ///< Permitted only on POSIX systems.
+    win32 =
+      cudaMemHandleTypeWin32,  ///< Allows a Win32 NT handle to be used for exporting. (HANDLE)
+    win32_kmt = cudaMemHandleTypeWin32Kmt,  ///< Allows a Win32 KMT handle to be used for exporting.
+                                            ///< (D3DKMT_HANDLE)
+    fabric = 0x8  ///< Allows a fabric handle to be used for exporting. (cudaMemFabricHandle_t)
   };
 
   /**
    * @brief Flags for specifying memory pool usage.
    *
-   * @note These values are exact copies from the runtime API. The only value so far is
-   * `cudaMemPoolCreateUsageHwDecompress`
+   * @note These values are exact copies from the runtime API. See the
+   * `cudaMemPoolProps` docs at
+   * https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaMemPoolProps.html
+   * and ensure the enum values are kept in sync with the CUDA documentation.
+   * `cudaMemPoolCreateUsageHwDecompress` is currently the only supported usage
+   * flag, introduced in CUDA 12.8 and documented in
+   * https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html
    */
   enum class mempool_usage : unsigned short {
     hw_decompress = 0x2,  ///< If set indicates that the memory can be used as a buffer for hardware
@@ -85,8 +83,9 @@ class cuda_async_memory_resource final : public device_memory_resource {
    *
    * @throws rmm::logic_error if the CUDA version does not support `cudaMallocAsync`
    *
-   * @param initial_pool_size Optional initial size in bytes of the pool. If no value is provided,
-   * initial pool size is half of the available GPU memory.
+   * @param initial_pool_size Optional initial size in bytes of the pool. If provided, the pool
+   * will be primed by allocating and immediately deallocating this amount of memory on the
+   * default CUDA stream.
    * @param release_threshold Optional release threshold size in bytes of the pool. If no value is
    * provided, the release threshold is set to the total amount of memory on the current device.
    * @param export_handle_type Optional `cudaMemAllocationHandleType` that allocations from this
@@ -110,31 +109,18 @@ class cuda_async_memory_resource final : public device_memory_resource {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= RMM_MIN_HWDECOMPRESS_CUDA_DRIVER_VERSION
     // Enable hardware decompression if supported (requires CUDA 12.8 driver or higher)
-    if (rmm::detail::runtime_async_alloc::is_hwdecompress_supported()) {
+    if (rmm::detail::hwdecompress::is_supported()) {
       pool_props.usage = static_cast<unsigned short>(mempool_usage::hw_decompress);
     }
 #endif
 
-    RMM_EXPECTS(
-      rmm::detail::runtime_async_alloc::is_export_handle_type_supported(pool_props.handleTypes),
-      "Requested IPC memory handle type not supported");
+    RMM_EXPECTS(rmm::detail::export_handle_type::is_supported(pool_props.handleTypes),
+                "Requested IPC memory handle type not supported");
     pool_props.location.type = cudaMemLocationTypeDevice;
     pool_props.location.id   = rmm::get_current_cuda_device().value();
     cudaMemPool_t cuda_pool_handle{};
     RMM_CUDA_TRY(cudaMemPoolCreate(&cuda_pool_handle, &pool_props));
     pool_ = cuda_async_view_memory_resource{cuda_pool_handle};
-
-    // CUDA drivers before 11.5 have known incompatibilities with the async allocator.
-    // We'll disable `cudaMemPoolReuseAllowOpportunistic` if cuda driver < 11.5.
-    // See https://github.com/NVIDIA/spark-rapids/issues/4710.
-    int driver_version{};
-    RMM_CUDA_TRY(cudaDriverGetVersion(&driver_version));
-    constexpr auto min_async_driver_version{11050};
-    if (driver_version < min_async_driver_version) {
-      int disabled{0};
-      RMM_CUDA_TRY(
-        cudaMemPoolSetAttribute(pool_handle(), cudaMemPoolReuseAllowOpportunistic, &disabled));
-    }
 
     auto const [free, total] = rmm::available_device_memory();
 
@@ -144,10 +130,12 @@ class cuda_async_memory_resource final : public device_memory_resource {
       cudaMemPoolSetAttribute(pool_handle(), cudaMemPoolAttrReleaseThreshold, &threshold));
 
     // Allocate and immediately deallocate the initial_pool_size to prime the pool with the
-    // specified size
-    auto const pool_size = initial_pool_size.value_or(free / 2);
-    auto* ptr            = do_allocate(pool_size, cuda_stream_default);
-    do_deallocate(ptr, pool_size, cuda_stream_default);
+    // specified size (only if initial_pool_size is provided)
+    if (initial_pool_size.has_value()) {
+      auto const pool_size = initial_pool_size.value();
+      auto* ptr            = do_allocate(pool_size, cuda_stream_default);
+      do_deallocate(ptr, pool_size, cuda_stream_default);
+    }
   }
 
   /**
@@ -181,7 +169,7 @@ class cuda_async_memory_resource final : public device_memory_resource {
   void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override
   {
     void* ptr{nullptr};
-    ptr = pool_.allocate(bytes, stream);
+    ptr = pool_.allocate(stream, bytes);
     return ptr;
   }
 
@@ -193,9 +181,9 @@ class cuda_async_memory_resource final : public device_memory_resource {
    * value of `bytes` that was passed to the `allocate` call that returned `p`.
    * @param stream Stream on which to perform deallocation
    */
-  void do_deallocate(void* ptr, std::size_t bytes, rmm::cuda_stream_view stream) override
+  void do_deallocate(void* ptr, std::size_t bytes, rmm::cuda_stream_view stream) noexcept override
   {
-    pool_.deallocate(ptr, bytes, stream);
+    pool_.deallocate(stream, ptr, bytes);
   }
 
   /**

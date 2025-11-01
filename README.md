@@ -37,7 +37,7 @@ RMM can be installed with conda. You can get a minimal conda installation with [
 Install RMM with:
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia rmm cuda-version=12.8
+conda install -c rapidsai -c conda-forge -c nvidia rmm cuda-version=13.0
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -56,17 +56,16 @@ See the [RAPIDS Installation Guide](https://docs.rapids.ai/install/) for system 
 Compiler requirements:
 
 * `gcc`     version 9.3+
-* `nvcc`    version 11.4+
+* `nvcc`    version 12.0+
 * `cmake`   version 3.30.4+
 
 CUDA/GPU requirements:
 
-* CUDA 11.4+. You can obtain CUDA from
+* CUDA 12.0+. You can obtain CUDA from
   [https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
 
 GPU Support:
-* RMM is tested and supported only on Volta architecture and newer (Compute Capability 7.0+). It
-  may work on earlier architectures.
+* RMM is tested and supported only on Volta architecture and newer (Compute Capability 7.0+).
 
 Python requirements:
 * `rapids-build-backend` (available from PyPI or the `rapidsai` conda channel)
@@ -81,16 +80,18 @@ For more details, see [pyproject.toml](python/rmm/pyproject.toml)
 
 To install RMM from source, ensure the dependencies are met and follow the steps below:
 
-- Clone the repository
+- Clone the repository:
+
 ```bash
 $ git clone https://github.com/rapidsai/rmm.git
 $ cd rmm
 ```
 
-- Create the conda development environment `rmm_dev`
+- Create the conda development environment `rmm_dev`:
+
 ```bash
 # create the conda environment (assuming in base `rmm` directory)
-$ conda env create --name rmm_dev --file conda/environments/all_cuda-128_arch-x86_64.yaml
+$ conda env create --name rmm_dev --file conda/environments/all_cuda-130_arch-$(arch).yaml
 # activate the environment
 $ conda activate rmm_dev
 ```
@@ -99,7 +100,6 @@ $ conda activate rmm_dev
   your path or defined in `CUDACXX` environment variable.
 
 ```bash
-
 $ mkdir build                                       # make a build directory
 $ cd build                                          # enter the build directory
 $ cmake .. -DCMAKE_INSTALL_PREFIX=/install/path     # configure cmake ... use $CONDA_PREFIX if you're using Anaconda
@@ -112,7 +112,6 @@ $ make install                                      # install the library librmm
   `CUDACXX` environment variable.
 
 ```bash
-
 $ ./build.sh -h                                     # Display help and exit
 $ ./build.sh -n librmm                              # Build librmm without installing
 $ ./build.sh -n rmm                                 # Build rmm without installing
@@ -121,15 +120,18 @@ $ ./build.sh librmm rmm                             # Build and install librmm a
 ```
 
 - To run tests (Optional):
+
 ```bash
 $ cd build (if you are not already in build directory)
 $ make test
 ```
 
 - Build, install, and test the `rmm` python package, in the `python` folder:
+
 ```bash
 # In the root rmm directory
-$ python -m pip install -e ./python/rmm
+$ python -m pip wheel ./python/librmm
+$ python -m pip install --find-links=. -e ./python/rmm
 $ pytest -v
 ```
 
@@ -188,7 +190,8 @@ instead:
 ```cmake
 CPMAddPackage(NAME rmm [VERSION]
               GITHUB_REPOSITORY rapidsai/rmm
-              SYSTEM Off)
+              SYSTEM Off
+              SOURCE_SUBDIR cpp)
 # ...
 target_link_libraries(<your-target> (PRIVATE|PUBLIC|INTERFACE) rmm::rmm)
 ```
@@ -217,7 +220,7 @@ It has two key functions:
 1. `void* device_memory_resource::allocate(std::size_t bytes, cuda_stream_view s)`
    - Returns a pointer to an allocation of at least `bytes` bytes.
 
-2. `void device_memory_resource::deallocate(void* p, std::size_t bytes, cuda_stream_view s)`
+2. `void device_memory_resource::deallocate(void* p, std::size_t bytes, cuda_stream_view s) noexcept`
    - Reclaims a previous allocation of size `bytes` pointed to by `p`.
    - `p` *must* have been returned by a previous call to `allocate(bytes)`, otherwise behavior is
      undefined
@@ -480,7 +483,7 @@ rmm::mr::polymorphic_allocator<int> stream_alloc;
 // Constructs an adaptor that forwards all (de)allocations to `stream_alloc` on `stream`.
 auto adapted = rmm::mr::stream_allocator_adaptor(stream_alloc, stream);
 
-// Allocates 100 bytes using `stream_alloc` on `stream`
+// Allocates storage for 100 ints using `stream_alloc` on `stream`
 auto p = adapted.allocate(100);
 ...
 // Deallocates using `stream_alloc` on `stream`
@@ -552,6 +555,8 @@ int32_t v = a.value(s); // Retrieves the value from device to host on stream `s`
 ```
 
 ## `host_memory_resource`
+
+> **⚠️ DEPRECATED in 25.12**: `host_memory_resource`, `pinned_memory_resource`, and `new_delete_resource` are deprecated and will be removed in 26.02. Use `pinned_host_memory_resource` instead for pinned host memory allocations.
 
 `rmm::mr::host_memory_resource` is the base class that defines the interface for allocating and
 freeing host memory.
@@ -676,7 +681,7 @@ be detected by CUDA tools such as
 
 Exceptions to this are `cuda_memory_resource`, which wraps `cudaMalloc`, and
 `cuda_async_memory_resource`, which uses `cudaMallocAsync` with CUDA's built-in memory pool
-functionality (CUDA 11.2 or later required). Illegal memory accesses to memory allocated by these
+functionality (introduced in CUDA 11.2). Illegal memory accesses to memory allocated by these
 resources are detectable with Compute Sanitizer Memcheck.
 
 It may be possible in the future to add support for memory bounds checking with other memory

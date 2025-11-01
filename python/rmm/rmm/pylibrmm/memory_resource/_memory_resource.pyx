@@ -1,16 +1,5 @@
-# Copyright (c) 2020-2025, NVIDIA CORPORATION.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 import os
 import warnings
@@ -66,6 +55,7 @@ from rmm.librmm.memory_resource cimport (
     logging_resource_adaptor,
     managed_memory_resource,
     percent_of_free_device_memory as c_percent_of_free_device_memory,
+    pinned_host_memory_resource,
     pool_memory_resource,
     prefetch_resource_adaptor,
     sam_headroom_memory_resource,
@@ -86,6 +76,17 @@ cdef class DeviceMemoryResource:
     def allocate(self, size_t nbytes, Stream stream=DEFAULT_STREAM):
         """Allocate ``nbytes`` bytes of memory.
 
+        Note
+        ----
+        On integrated memory systems, attempting to allocate more memory than
+        available can cause the process to be killed by the operating system
+        instead of raising a catchable ``MemoryError``.
+
+        Raises
+        ------
+        MemoryError
+            If allocation fails.
+
         Parameters
         ----------
         nbytes : size_t
@@ -93,7 +94,10 @@ cdef class DeviceMemoryResource:
         stream : Stream
             Optional stream for the allocation
         """
-        return <uintptr_t>self.c_obj.get().allocate(nbytes, stream.view())
+        cdef uintptr_t ptr
+        with nogil:
+            ptr = <uintptr_t>self.c_obj.get().allocate(stream.view(), nbytes)
+        return ptr
 
     def deallocate(self, uintptr_t ptr, size_t nbytes, Stream stream=DEFAULT_STREAM):
         """Deallocate memory pointed to by ``ptr`` of size ``nbytes``.
@@ -107,7 +111,15 @@ cdef class DeviceMemoryResource:
         stream : Stream
             Optional stream for the deallocation
         """
-        self.c_obj.get().deallocate(<void*>(ptr), nbytes, stream.view())
+        with nogil:
+            self.c_obj.get().deallocate(stream.view(), <void*>(ptr), nbytes)
+
+    def __dealloc__(self):
+        # See the __dealloc__ method on DeviceBuffer for discussion of why we must
+        # explicitly call reset here instead of relying on the unique_ptr's
+        # destructor.
+        with nogil:
+            self.c_obj.reset()
 
 
 # See the note about `no_gc_clear` in `device_buffer.pyx`.
@@ -127,12 +139,15 @@ cdef class UpstreamResourceAdaptor(DeviceMemoryResource):
 
         self.upstream_mr = upstream_mr
 
-    def __dealloc__(self):
-        # Must cleanup the base MR before any upstream MR
-        self.c_obj.reset()
-
     cpdef DeviceMemoryResource get_upstream(self):
         return self.upstream_mr
+
+    def __dealloc__(self):
+        # Need to override the parent method with an identical implementation
+        # to ensure that self.upstream_mr is still alive when the C++ mr's
+        # destructor is invoked since it will reference self.upstream_mr.c_obj.
+        with nogil:
+            self.c_obj.reset()
 
 
 cdef class CudaMemoryResource(DeviceMemoryResource):
@@ -282,6 +297,23 @@ cdef class SystemMemoryResource(DeviceMemoryResource):
         """
         Memory resource that uses ``malloc``/``free`` for
         allocation/deallocation.
+        """
+        pass
+
+
+cdef class PinnedHostMemoryResource(DeviceMemoryResource):
+    def __cinit__(self):
+        self.c_obj.reset(
+            new pinned_host_memory_resource()
+        )
+
+    def __init__(self):
+        """
+        Memory resource that uses ``cudaHostAlloc``/``cudaFreeHost`` for
+        allocation/deallocation of pinned host memory.
+
+        Pinned (page-locked) host memory is accessible from both the host and
+        device, enabling faster data transfers between host and device.
         """
         pass
 
@@ -474,11 +506,6 @@ cdef class BinningMemoryResource(UpstreamResourceAdaptor):
                     max_size_exponent
                 )
             )
-
-    def __dealloc__(self):
-
-        # Must cleanup the base MR before any upstream or referenced Bins
-        self.c_obj.reset()
 
     def __init__(
         self,
@@ -762,9 +789,6 @@ cdef class LoggingResourceAdaptor(UpstreamResourceAdaptor):
 
     cpdef get_file_name(self):
         return self._log_file_name
-
-    def __dealloc__(self):
-        self.c_obj.reset()
 
 cdef class StatisticsResourceAdaptor(UpstreamResourceAdaptor):
 

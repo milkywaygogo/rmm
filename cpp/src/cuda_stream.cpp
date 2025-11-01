@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2020-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <rmm/cuda_stream.hpp>
@@ -20,12 +9,16 @@
 
 #include <cuda_runtime_api.h>
 
+#include <type_traits>
+
 namespace rmm {
 
-cuda_stream::cuda_stream()
-  : stream_{[]() {
+cuda_stream::cuda_stream(cuda_stream::flags flags)
+  : stream_{[flags]() {
               auto* stream = new cudaStream_t;  // NOLINT(cppcoreguidelines-owning-memory)
-              RMM_CUDA_TRY(cudaStreamCreate(stream));
+              // TODO: use std::to_underlying once C++23 is allowed.
+              RMM_CUDA_TRY(cudaStreamCreateWithFlags(
+                stream, static_cast<std::underlying_type_t<cuda_stream::flags>>(flags)));
               return stream;
             }(),
             [](cudaStream_t* stream) {

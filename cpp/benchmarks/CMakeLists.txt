@@ -1,15 +1,8 @@
 # =============================================================================
-# Copyright (c) 2018-2025, NVIDIA CORPORATION.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-# in compliance with the License. You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software distributed under the License
-# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-# or implied. See the License for the specific language governing permissions and limitations under
-# the License.
+# cmake-format: off
+# SPDX-FileCopyrightText: Copyright (c) 2018-2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
+# cmake-format: on
 # =============================================================================
 
 # Build options
@@ -76,3 +69,6 @@ ConfigureBench(CUDA_STREAM_POOL_BENCH cuda_stream_pool/cuda_stream_pool_bench.cp
 # multi stream allocations
 ConfigureBench(MULTI_STREAM_ALLOCATIONS_BENCH
                multi_stream_allocations/multi_stream_allocations_bench.cu)
+
+# async priming benchmark
+ConfigureBench(ASYNC_PRIMING_BENCH async_priming/async_priming_bench.cpp)

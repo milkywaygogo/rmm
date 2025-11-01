@@ -4,22 +4,26 @@ on:
   push:
     branches:
       - "main"
-      - "release/*"
-      - "hotfix/*"
     tags:
       - v[0-9][0-9].[0-9][0-9].[0-9][0-9]
   workflow_dispatch:
     inputs:
       branch:
+        description: |
+          branch: git branch the workflow run targets.
+          Required even when 'sha' is provided because it is also used for organizing artifacts.
         required: true
         type: string
       date:
+        description: "date: Date (YYYY-MM-DD) this run is for. Used to organize artifacts produced by nightly builds"
         required: true
         type: string
       sha:
+        description: "sha: full git commit SHA to check out"
         required: true
         type: string
       build_type:
+        description: "build_type: one of [branch, nightly, pull-request]"
         type: string
         default: nightly
 
@@ -34,6 +38,11 @@ jobs:
     env:
       OTEL_SERVICE_NAME: "build-rmm"
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
       - name: Telemetry setup
         # This gate is here and not at the job level because we need the job to not be skipped,
         # since other jobs depend on it.
@@ -42,7 +51,7 @@ jobs:
   cpp-build:
     needs: [telemetry-setup]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -52,7 +61,7 @@ jobs:
   python-build:
     needs: [telemetry-setup, cpp-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -62,7 +71,7 @@ jobs:
   upload-conda:
     needs: [cpp-build, python-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -72,7 +81,7 @@ jobs:
     if: github.ref_type == 'branch'
     needs: [python-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -80,12 +89,12 @@ jobs:
       date: ${{ inputs.date }}
       node_type: "gpu-l4-latest-1"
       arch: "amd64"
-      container_image: "rapidsai/ci-conda:latest"
+      container_image: "rapidsai/ci-conda:25.12-latest"
       script: ci/build_docs.sh
   wheel-build-cpp:
     needs: [telemetry-setup]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -98,7 +107,7 @@ jobs:
   wheel-build-python:
     needs: [telemetry-setup, wheel-build-cpp]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -110,7 +119,7 @@ jobs:
   wheel-publish-cpp:
     needs: wheel-build-cpp
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -121,7 +130,7 @@ jobs:
   wheel-publish-python:
     needs: wheel-build-python
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -136,5 +145,10 @@ jobs:
     if: ${{ vars.TELEMETRY_ENABLED == 'true' && !cancelled() }}
     continue-on-error: true
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
       - name: Telemetry summarize
         uses: rapidsai/shared-actions/telemetry-dispatch-summarize@main

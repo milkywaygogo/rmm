@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2020-2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
@@ -23,6 +24,8 @@ rapids-dependency-file-generator \
   | tee env.yaml
 
 rapids-mamba-retry env create --yes -f env.yaml -n test
+
+# Temporarily allow unbound variables for conda activation.
 set +u
 conda activate test
 set -u

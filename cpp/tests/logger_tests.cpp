@@ -1,23 +1,14 @@
 /*
- * Copyright (c) 2020-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "./byte_literals.hpp"
 
 #include <rmm/mr/device/cuda_memory_resource.hpp>
 #include <rmm/mr/device/logging_resource_adaptor.hpp>
+
+#include <thrust/iterator/zip_iterator.h>
 
 #include <benchmarks/utilities/log_parser.hpp>
 #include <gtest/gtest.h>
@@ -105,20 +96,21 @@ void expect_log_events(std::string const& filename,
 {
   auto actual_events = rmm::detail::parse_csv(filename);
 
-  std::equal(expected_events.begin(),
-             expected_events.end(),
-             actual_events.begin(),
-             [](auto expected, auto actual) {
-               // We don't test the logged thread id since it may be different from what we record.
-               // The actual value doesn't matter so long as events from different threads have
-               // different ids
-               // EXPECT_EQ(expected.thread_id, actual.thread_id);
-               // EXPECT_EQ(expected.stream, actual.stream);
-               EXPECT_EQ(expected.act, actual.act);
-               EXPECT_EQ(expected.size, actual.size);
-               EXPECT_EQ(expected.pointer, actual.pointer);
-               return true;
-             });
+  auto begin = thrust::make_zip_iterator(
+    cuda::std::make_tuple(expected_events.begin(), actual_events.begin()));
+  auto end =
+    thrust::make_zip_iterator(cuda::std::make_tuple(expected_events.end(), actual_events.end()));
+
+  std::for_each(begin, end, [](auto const& zipped) {
+    auto [expected, actual] = zipped;
+    // We don't test the logged thread id since it may be different from what
+    // we record. The actual value doesn't matter so long as events from
+    // different threads have different ids EXPECT_EQ(expected.thread_id,
+    // actual.thread_id); EXPECT_EQ(expected.stream, actual.stream);
+    EXPECT_EQ(expected.act, actual.act);
+    EXPECT_EQ(expected.size, actual.size);
+    EXPECT_EQ(expected.pointer, actual.pointer);
+  });
 }
 
 TEST(Adaptor, FilenameConstructor)
@@ -131,10 +123,10 @@ TEST(Adaptor, FilenameConstructor)
   auto const size0{100};
   auto const size1{42};
 
-  auto* ptr0 = log_mr.allocate(size0);
-  auto* ptr1 = log_mr.allocate(size1);
-  log_mr.deallocate(ptr0, size0);
-  log_mr.deallocate(ptr1, size1);
+  auto* ptr0 = log_mr.allocate_sync(size0);
+  auto* ptr1 = log_mr.allocate_sync(size1);
+  log_mr.deallocate_sync(ptr0, size0);
+  log_mr.deallocate_sync(ptr1, size1);
   log_mr.flush();
 
   using rmm::detail::action;
@@ -164,10 +156,10 @@ TEST(Adaptor, MultiSinkConstructor)
   auto const size0{100};
   auto const size1{42};
 
-  auto* ptr0 = log_mr.allocate(size0);
-  auto* ptr1 = log_mr.allocate(size1);
-  log_mr.deallocate(ptr0, size0);
-  log_mr.deallocate(ptr1, size1);
+  auto* ptr0 = log_mr.allocate_sync(size0);
+  auto* ptr1 = log_mr.allocate_sync(size1);
+  log_mr.deallocate_sync(ptr0, size0);
+  log_mr.deallocate_sync(ptr1, size1);
   log_mr.flush();
 
   using rmm::detail::action;
@@ -193,10 +185,10 @@ TEST(Adaptor, Factory)
   auto const size0{99};
   auto const size1{42};
 
-  auto* ptr0 = log_mr.allocate(size0);
-  log_mr.deallocate(ptr0, size0);
-  auto* ptr1 = log_mr.allocate(size1);
-  log_mr.deallocate(ptr1, size1);
+  auto* ptr0 = log_mr.allocate_sync(size0);
+  log_mr.deallocate_sync(ptr0, size0);
+  auto* ptr1 = log_mr.allocate_sync(size1);
+  log_mr.deallocate_sync(ptr1, size1);
   log_mr.flush();
 
   using rmm::detail::action;
@@ -232,8 +224,8 @@ TEST(Adaptor, EnvironmentPath)
 
   auto const size{100};
 
-  auto* ptr = log_mr.allocate(size);
-  log_mr.deallocate(ptr, size);
+  auto* ptr = log_mr.allocate_sync(size);
+  log_mr.deallocate_sync(ptr, size);
 
   log_mr.flush();
 
@@ -259,10 +251,10 @@ TEST(Adaptor, AllocateFailure)
   auto const size0{99};
   auto const size1{1_TiB};
 
-  auto* ptr0 = log_mr.allocate(size0);
-  log_mr.deallocate(ptr0, size0);
+  auto* ptr0 = log_mr.allocate_sync(size0);
+  log_mr.deallocate_sync(ptr0, size0);
   try {
-    log_mr.allocate(size1);
+    log_mr.allocate_sync(size1);
   } catch (...) {
   }
   log_mr.flush();
@@ -287,8 +279,8 @@ TEST(Adaptor, STDOUT)
 
   auto const size{100};
 
-  auto* ptr = log_mr.allocate(size);
-  log_mr.deallocate(ptr, size);
+  auto* ptr = log_mr.allocate_sync(size);
+  log_mr.deallocate_sync(ptr, size);
 
   std::string output = testing::internal::GetCapturedStdout();
   std::string header = output.substr(0, output.find('\n'));
@@ -305,8 +297,8 @@ TEST(Adaptor, STDERR)
 
   auto const size{100};
 
-  auto* ptr = log_mr.allocate(size);
-  log_mr.deallocate(ptr, size);
+  auto* ptr = log_mr.allocate_sync(size);
+  log_mr.deallocate_sync(ptr, size);
 
   std::string output = testing::internal::GetCapturedStderr();
   std::string header = output.substr(0, output.find('\n'));

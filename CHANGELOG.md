@@ -1,3 +1,91 @@
+# rmm 25.10.00 (8 Oct 2025)
+
+## 🚨 Breaking Changes
+
+- Add option to create non-blocking streams ([#2036](https://github.com/rapidsai/rmm/pull/2036)) [@wence-](https://github.com/wence-)
+
+## 🐛 Bug Fixes
+
+- Fix bug in pinned_memory_resource with CCCL 3.1.x. ([#2058](https://github.com/rapidsai/rmm/pull/2058)) [@bdice](https://github.com/bdice)
+- Always release the GIL before any operation that could acquire locks from the CUDA runtime ([#2028](https://github.com/rapidsai/rmm/pull/2028)) [@vyasr](https://github.com/vyasr)
+- Skip callback memory tests on integrated memory systems, add docs ([#2025](https://github.com/rapidsai/rmm/pull/2025)) [@bdice](https://github.com/bdice)
+- Add numba-cuda to fix errors on driver 580+. ([#2013](https://github.com/rapidsai/rmm/pull/2013)) [@bdice](https://github.com/bdice)
+- Fix aligned resource adaptor bug when alignment is less than 256. ([#2003](https://github.com/rapidsai/rmm/pull/2003)) [@bdice](https://github.com/bdice)
+- Skip test on HMM systems with older CUDA drivers ([#1944](https://github.com/rapidsai/rmm/pull/1944)) [@bdice](https://github.com/bdice)
+
+## 📖 Documentation
+
+- Minor improvements to README ([#2018](https://github.com/rapidsai/rmm/pull/2018)) [@bdice](https://github.com/bdice)
+
+## 🚀 New Features
+
+- Support building with CCCL 3.1.0 ([#2017](https://github.com/rapidsai/rmm/pull/2017)) [@bdice](https://github.com/bdice)
+- Update to use CUDA runtime APIs that work in CUDA 12 and 13 ([#2004](https://github.com/rapidsai/rmm/pull/2004)) [@robertmaynard](https://github.com/robertmaynard)
+
+## 🛠️ Improvements
+
+- Configure repo for automatic release notes generation ([#2037](https://github.com/rapidsai/rmm/pull/2037)) [@AyodeAwe](https://github.com/AyodeAwe)
+- Add option to create non-blocking streams ([#2036](https://github.com/rapidsai/rmm/pull/2036)) [@wence-](https://github.com/wence-)
+- update dependencies: cuda-python (&gt;=12.9.2 / &gt;=13.0.1) ([#2031](https://github.com/rapidsai/rmm/pull/2031)) [@jameslamb](https://github.com/jameslamb)
+- Use branch-25.10 again ([#2030](https://github.com/rapidsai/rmm/pull/2030)) [@jameslamb](https://github.com/jameslamb)
+- Update rapids-dependency-file-generator ([#2027](https://github.com/rapidsai/rmm/pull/2027)) [@KyleFromNVIDIA](https://github.com/KyleFromNVIDIA)
+- Require numba-cuda&gt;=0.19.1 to get fixes for numba==0.60 support ([#2024](https://github.com/rapidsai/rmm/pull/2024)) [@bdice](https://github.com/bdice)
+- Update dependencies to align with other repos adopting CUDA 13 ([#2022](https://github.com/rapidsai/rmm/pull/2022)) [@bdice](https://github.com/bdice)
+- Build and test with CUDA 13.0.0 ([#2021](https://github.com/rapidsai/rmm/pull/2021)) [@jameslamb](https://github.com/jameslamb)
+- Change pylibrmm Stream.view() method to noexcept ([#2020](https://github.com/rapidsai/rmm/pull/2020)) [@davidwendt](https://github.com/davidwendt)
+- Update to numba-cuda &gt;=0.18.0,&lt;0.19.0a0 ([#2019](https://github.com/rapidsai/rmm/pull/2019)) [@bdice](https://github.com/bdice)
+- Use build cluster in devcontainers ([#2016](https://github.com/rapidsai/rmm/pull/2016)) [@trxcllnt](https://github.com/trxcllnt)
+- Refactor device capability checks, fix prefetching bug on WSL ([#2014](https://github.com/rapidsai/rmm/pull/2014)) [@bdice](https://github.com/bdice)
+- Add CUDA 13.0.0 devcontainers ([#2012](https://github.com/rapidsai/rmm/pull/2012)) [@bdice](https://github.com/bdice)
+- Update rapids_config to handle user defined branch name ([#2010](https://github.com/rapidsai/rmm/pull/2010)) [@robertmaynard](https://github.com/robertmaynard)
+- Update rapids-build-backend to 0.4.1 ([#2007](https://github.com/rapidsai/rmm/pull/2007)) [@KyleFromNVIDIA](https://github.com/KyleFromNVIDIA)
+- ci(labeler): update labeler action to [@v5 ([#2006](https://github.com/rapidsai/rmm/pull/2006)) @gforsyth](https://github.com/v5 ([#2006](https://github.com/rapidsai/rmm/pull/2006)) @gforsyth)
+- [StepSecurity] Apply security best practices ([#2000](https://github.com/rapidsai/rmm/pull/2000)) [@stepsecurity-app[bot]](https://github.com/stepsecurity-app[bot])
+- Use std::for_each instead of std::equal in test ([#1999](https://github.com/rapidsai/rmm/pull/1999)) [@vyasr](https://github.com/vyasr)
+- Allow latest OS in devcontainers ([#1997](https://github.com/rapidsai/rmm/pull/1997)) [@bdice](https://github.com/bdice)
+- Update build infra to support new branching strategy ([#1994](https://github.com/rapidsai/rmm/pull/1994)) [@robertmaynard](https://github.com/robertmaynard)
+- Move more implementations to precompiled shared library (part 2) ([#1983](https://github.com/rapidsai/rmm/pull/1983)) [@bdice](https://github.com/bdice)
+- Use GCC 14 in conda builds. ([#1963](https://github.com/rapidsai/rmm/pull/1963)) [@vyasr](https://github.com/vyasr)
+
+# rmm 25.08.00 (6 Aug 2025)
+
+## 🚨 Breaking Changes
+
+- Update requirements to CUDA 12.0+ ([#1984](https://github.com/rapidsai/rmm/pull/1984)) [@bdice](https://github.com/bdice)
+- Remove CUDA 11 from dependencies.yaml ([#1934](https://github.com/rapidsai/rmm/pull/1934)) [@KyleFromNVIDIA](https://github.com/KyleFromNVIDIA)
+- stop uploading packages to downloads.rapids.ai ([#1929](https://github.com/rapidsai/rmm/pull/1929)) [@jameslamb](https://github.com/jameslamb)
+
+## 🐛 Bug Fixes
+
+- Temporarily disable failing test on HMM systems. ([#1950](https://github.com/rapidsai/rmm/pull/1950)) [@bdice](https://github.com/bdice)
+- Fix race conditions and deadlocks in REPLAY_BENCH ([#1940](https://github.com/rapidsai/rmm/pull/1940)) [@wence-](https://github.com/wence-)
+
+## 📖 Documentation
+
+- Update Python build instructions to include librmm wheel ([#1978](https://github.com/rapidsai/rmm/pull/1978)) [@gmarkall](https://github.com/gmarkall)
+- Fix Python path in CONTRIBUTING.md ([#1936](https://github.com/rapidsai/rmm/pull/1936)) [@bdice](https://github.com/bdice)
+
+## 🚀 New Features
+
+- Update requirements to CUDA 12.0+ ([#1984](https://github.com/rapidsai/rmm/pull/1984)) [@bdice](https://github.com/bdice)
+
+## 🛠️ Improvements
+
+- Use size_type in device_uvector ([#1992](https://github.com/rapidsai/rmm/pull/1992)) [@bdice](https://github.com/bdice)
+- chore: remove unused line from update-version.sh ([#1989](https://github.com/rapidsai/rmm/pull/1989)) [@gforsyth](https://github.com/gforsyth)
+- Revert &quot;Update branches that trigger nightlies ([#1954)&quot; (#1988](https://github.com/rapidsai/rmm/pull/1954)&quot; (#1988)) [@gforsyth](https://github.com/gforsyth)
+- fix(docker): use versioned `-latest` tag for all `rapidsai` images ([#1987](https://github.com/rapidsai/rmm/pull/1987)) [@gforsyth](https://github.com/gforsyth)
+- Move more implementations to precompiled shared library ([#1980](https://github.com/rapidsai/rmm/pull/1980)) [@bdice](https://github.com/bdice)
+- [pre-commit.ci] pre-commit autoupdate ([#1979](https://github.com/rapidsai/rmm/pull/1979)) [@pre-commit-ci[bot]](https://github.com/pre-commit-ci[bot])
+- Add managed memory resource to replay benchmark ([#1938](https://github.com/rapidsai/rmm/pull/1938)) [@pentschev](https://github.com/pentschev)
+- Remove CUDA 11 from dependencies.yaml ([#1934](https://github.com/rapidsai/rmm/pull/1934)) [@KyleFromNVIDIA](https://github.com/KyleFromNVIDIA)
+- Remove CUDA 11 devcontainers and update CI scripts ([#1933](https://github.com/rapidsai/rmm/pull/1933)) [@bdice](https://github.com/bdice)
+- refactor(rattler): remove cuda11 options and general cleanup ([#1932](https://github.com/rapidsai/rmm/pull/1932)) [@gforsyth](https://github.com/gforsyth)
+- stop uploading packages to downloads.rapids.ai ([#1929](https://github.com/rapidsai/rmm/pull/1929)) [@jameslamb](https://github.com/jameslamb)
+- Forward-merge branch-25.06 into branch-25.08 ([#1925](https://github.com/rapidsai/rmm/pull/1925)) [@gforsyth](https://github.com/gforsyth)
+- Branch 25.08 merge branch 25.06 ([#1914](https://github.com/rapidsai/rmm/pull/1914)) [@vyasr](https://github.com/vyasr)
+- Forward-merge branch-25.06 into branch-25.08 ([#1905](https://github.com/rapidsai/rmm/pull/1905)) [@gforsyth](https://github.com/gforsyth)
+
 # rmm 25.06.00 (5 Jun 2025)
 
 ## 🚨 Breaking Changes

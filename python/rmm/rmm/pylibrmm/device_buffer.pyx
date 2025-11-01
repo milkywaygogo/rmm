@@ -1,16 +1,5 @@
-# Copyright (c) 2019-2025, NVIDIA CORPORATION.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 import numpy as np
 
 cimport cython
@@ -105,6 +94,18 @@ cdef class DeviceBuffer:
 
                 if stream.c_is_default():
                     stream.c_synchronize()
+
+    def __dealloc__(self):
+        # Relying on the unique_ptr to call the destructor when Python reclaims
+        # the object is unsafe because deconstructing the underlying C++
+        # device_buffer may involve a cudaFree call, which involves grabbing a
+        # lock from the CUDA runtime. If that lock is being held by another
+        # thread which is simultaneously trying to acquire the GIL, then we
+        # could have the thread deallocating the device buffer holding the GIL
+        # while trying to claim the CUDA lock while the other thread is holding
+        # the CUDA lock and trying to acquire the GIL, resulting in a deadlock.
+        with nogil:
+            self.c_obj.reset()
 
     def __len__(self):
         return self.size
@@ -436,8 +437,10 @@ cdef void _copy_async(const void* src,
     kind : the kind of copy to perform
     stream : CUDA stream to use for copying, default the default stream
     """
-    cdef cudaError_t err = cudaMemcpyAsync(dst, src, count, kind,
-                                           <cudaStream_t>stream)
+    cdef cudaError_t err
+    with nogil:
+        err = cudaMemcpyAsync(dst, src, count, kind,
+                              <cudaStream_t>stream)
 
     if err != cudaError.cudaSuccess:
         raise RuntimeError(f"Memcpy failed with error: {err}")

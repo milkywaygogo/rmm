@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2021-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "../../byte_literals.hpp"
@@ -67,22 +56,24 @@ using adaptors = ::testing::Types<aligned_resource_adaptor<cuda_mr>,
                                   thread_safe_resource_adaptor<cuda_mr>,
                                   tracking_resource_adaptor<cuda_mr>>;
 
+// static property checks
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::aligned_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
 static_assert(
-  cuda::mr::resource_with<rmm::mr::aligned_resource_adaptor<cuda_mr>, cuda::mr::device_accessible>);
-static_assert(cuda::mr::resource_with<rmm::mr::failure_callback_resource_adaptor<cuda_mr>,
-                                      cuda::mr::device_accessible>);
-static_assert(cuda::mr::resource_with<rmm::mr::limiting_resource_adaptor<cuda_mr>,
-                                      cuda::mr::device_accessible>);
-static_assert(
-  cuda::mr::resource_with<rmm::mr::logging_resource_adaptor<cuda_mr>, cuda::mr::device_accessible>);
-static_assert(
-  cuda::mr::resource_with<rmm::mr::owning_wrapper<cuda_mr>, cuda::mr::device_accessible>);
-static_assert(cuda::mr::resource_with<rmm::mr::statistics_resource_adaptor<cuda_mr>,
-                                      cuda::mr::device_accessible>);
-static_assert(cuda::mr::resource_with<rmm::mr::thread_safe_resource_adaptor<cuda_mr>,
-                                      cuda::mr::device_accessible>);
-static_assert(cuda::mr::resource_with<rmm::mr::tracking_resource_adaptor<cuda_mr>,
-                                      cuda::mr::device_accessible>);
+  rmm::detail::polyfill::resource_with<rmm::mr::failure_callback_resource_adaptor<cuda_mr>,
+                                       cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::limiting_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::logging_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::owning_wrapper<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::statistics_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::thread_safe_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
+static_assert(rmm::detail::polyfill::resource_with<rmm::mr::tracking_resource_adaptor<cuda_mr>,
+                                                   cuda::mr::device_accessible>);
 
 template <typename MemoryResourceType>
 struct AdaptorTest : public ::testing::Test {
@@ -148,9 +139,9 @@ TYPED_TEST(AdaptorTest, GetUpstreamResource)
 TYPED_TEST(AdaptorTest, AllocFree)
 {
   void* ptr{nullptr};
-  EXPECT_NO_THROW(ptr = this->mr->allocate(1024));
+  EXPECT_NO_THROW(ptr = this->mr->allocate_sync(1024));
   EXPECT_NE(ptr, nullptr);
-  EXPECT_NO_THROW(this->mr->deallocate(ptr, 1024));
+  EXPECT_NO_THROW(this->mr->deallocate_sync(ptr, 1024));
 }
 
 }  // namespace rmm::test

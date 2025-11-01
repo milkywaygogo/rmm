@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2024-2025, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #pragma once
 
@@ -37,6 +26,7 @@ namespace detail {
  */
 static bool is_system_memory_supported(cuda_device_id device_id)
 {
+  // Check if pageable memory access is supported
   int pageableMemoryAccess;
   RMM_CUDA_TRY(cudaDeviceGetAttribute(
     &pageableMemoryAccess, cudaDevAttrPageableMemoryAccess, device_id.value()));
@@ -122,7 +112,7 @@ class system_memory_resource final : public device_memory_resource {
    */
   void do_deallocate(void* ptr,
                      [[maybe_unused]] std::size_t bytes,
-                     cuda_stream_view stream) override
+                     cuda_stream_view stream) noexcept override
   {
     // With `cudaFree`, the CUDA runtime keeps track of dependent operations and does implicit
     // synchronization. However, with SAM, since `free` is immediate, we need to wait for in-flight
@@ -164,8 +154,10 @@ class system_memory_resource final : public device_memory_resource {
 };
 
 // static property checks
-static_assert(cuda::mr::async_resource_with<system_memory_resource, cuda::mr::device_accessible>);
-static_assert(cuda::mr::async_resource_with<system_memory_resource, cuda::mr::host_accessible>);
+static_assert(
+  rmm::detail::polyfill::async_resource_with<system_memory_resource, cuda::mr::device_accessible>);
+static_assert(
+  rmm::detail::polyfill::async_resource_with<system_memory_resource, cuda::mr::host_accessible>);
 /** @} */  // end of group
 }  // namespace mr
 }  // namespace RMM_NAMESPACE

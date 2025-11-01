@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2020-2024, NVIDIA CORPORATION.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #pragma once
@@ -59,19 +48,19 @@ class bad_alloc : public std::bad_alloc {
    *
    * @param msg Message to be associated with the exception
    */
-  bad_alloc(const char* msg) : _what{std::string{std::bad_alloc::what()} + ": " + msg} {}
+  bad_alloc(const char* msg);
 
   /**
    * @brief Constructs a bad_alloc with the error message.
    *
    * @param msg Message to be associated with the exception
    */
-  bad_alloc(std::string const& msg) : bad_alloc{msg.c_str()} {}
+  bad_alloc(std::string const& msg);
 
   /**
    * @briefreturn{The explanatory string}
    */
-  [[nodiscard]] const char* what() const noexcept override { return _what.c_str(); }
+  [[nodiscard]] const char* what() const noexcept override;
 
  private:
   std::string _what;
@@ -91,14 +80,14 @@ class out_of_memory : public bad_alloc {
    *
    * @param msg Message to be associated with the exception
    */
-  out_of_memory(const char* msg) : bad_alloc{std::string{"out_of_memory: "} + msg} {}
+  out_of_memory(const char* msg);
 
   /**
    * @brief Constructs an out_of_memory with the error message.
    *
    * @param msg Message to be associated with the exception
    */
-  out_of_memory(std::string const& msg) : out_of_memory{msg.c_str()} {}
+  out_of_memory(std::string const& msg);
 };
 
 /**

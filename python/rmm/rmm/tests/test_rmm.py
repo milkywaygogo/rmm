@@ -1,16 +1,5 @@
-# Copyright (c) 2020-2025, NVIDIA CORPORATION.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 import copy
 import functools
@@ -29,6 +18,7 @@ import rmm
 from rmm.allocators.cupy import rmm_cupy_allocator
 from rmm.allocators.numba import RMMNumbaManager
 from rmm.pylibrmm.logger import level_enum
+from rmm.pylibrmm.memory_resource._memory_resource import _flush_logs
 from rmm.pylibrmm.stream import Stream
 
 cuda.set_memory_manager(RMMNumbaManager)
@@ -36,6 +26,20 @@ cuda.set_memory_manager(RMMNumbaManager)
 _SYSTEM_MEMORY_SUPPORTED = rmm._cuda.gpu.getDeviceAttribute(
     runtime.cudaDeviceAttr.cudaDevAttrPageableMemoryAccess,
     rmm._cuda.gpu.getDevice(),
+)
+
+_IS_INTEGRATED_MEMORY_SYSTEM = rmm._cuda.gpu.getDeviceAttribute(
+    runtime.cudaDeviceAttr.cudaDevAttrIntegrated, rmm._cuda.gpu.getDevice()
+)
+
+_CONCURRENT_MANAGED_ACCESS_SUPPORTED = rmm._cuda.gpu.getDeviceAttribute(
+    runtime.cudaDeviceAttr.cudaDevAttrConcurrentManagedAccess,
+    rmm._cuda.gpu.getDevice(),
+)
+
+_ASYNC_MANAGED_MEMORY_SUPPORTED = (
+    _CONCURRENT_MANAGED_ACCESS_SUPPORTED
+    and rmm._cuda.gpu.runtimeGetVersion() >= 13000
 )
 
 
@@ -133,7 +137,7 @@ def test_rmm_csv_log(dtype, nelem, alloc, tmpdir):
     base_name = str(tmpdir.join("rmm_log.csv"))
     rmm.reinitialize(logging=True, log_file_name=base_name)
     array_tester(dtype, nelem, alloc)
-    rmm.mr._flush_logs()
+    _flush_logs()
 
     # Need to open separately because the device ID is appended to filename
     fname = base_name[: -len(suffix)] + ".dev0" + suffix
@@ -335,13 +339,13 @@ def assert_prefetched(buffer, device_id):
 def test_rmm_device_buffer_prefetch(pool, managed):
     rmm.reinitialize(pool_allocator=pool, managed_memory=managed)
     db = rmm.DeviceBuffer.to_device(np.zeros(256, dtype="u1"))
-    if managed:
+    if managed and _CONCURRENT_MANAGED_ACCESS_SUPPORTED:
         assert_prefetched(db, runtime.cudaInvalidDeviceId)
     db.prefetch()  # just test that it doesn't throw
-    if managed:
-        err, device = runtime.cudaGetDevice()
+    if managed and _CONCURRENT_MANAGED_ACCESS_SUPPORTED:
+        err, device_id = runtime.cudaGetDevice()
         assert err == runtime.cudaError_t.cudaSuccess
-        assert_prefetched(db, device)
+        assert_prefetched(db, device_id)
 
 
 @pytest.mark.parametrize("stream", [cuda.default_stream(), cuda.stream()])
@@ -576,7 +580,7 @@ def test_rmm_enable_disable_logging(dtype, nelem, alloc, tmpdir):
     rmm.enable_logging(log_file_name=base_name)
     print(rmm.mr.get_per_device_resource(0))
     array_tester(dtype, nelem, alloc)
-    rmm.mr._flush_logs()
+    _flush_logs()
 
     # Need to open separately because the device ID is appended to filename
     fname = base_name[: -len(suffix)] + ".dev0" + suffix
@@ -663,30 +667,10 @@ def test_cuda_async_memory_resource(dtype, nelem, alloc):
 
 
 def test_cuda_async_memory_resource_ipc():
-    # TODO: We don't have a great way to check if IPC is supported in Python,
-    # without using the C++ function
-    # rmm::detail::runtime_async_alloc::is_export_handle_type_supported.
-    # We can't accurately test this via Python because
-    # cuda-python always has the IPC handle enum defined (which normally
-    # requires a CUDA 11.3 runtime) and the cuda-compat package in Docker
-    # containers prevents us from assuming that the driver we see actually
-    # supports IPC handles even if its reported version is new enough (we may
-    # see a newer driver than what is present on the host). We can only know
-    # the expected behavior by checking the C++ function mentioned above, which
-    # is then a redundant check because the CudaAsyncMemoryResource constructor
-    # follows the same logic. Therefore, we cannot easily ensure this test
-    # passes in certain expected configurations -- we can only ensure that if
-    # it fails, it fails in a predictable way.
-    try:
-        mr = rmm.mr.CudaAsyncMemoryResource(enable_ipc=True)
-    except RuntimeError as e:
-        # CUDA 11.3 is required for IPC memory handle support
-        assert str(e).endswith(
-            "Requested IPC memory handle type not supported"
-        )
-    else:
-        rmm.mr.set_current_device_resource(mr)
-        assert rmm.mr.get_current_device_resource_type() is type(mr)
+    # CUDA 11.3+ is required for IPC memory handle support
+    mr = rmm.mr.CudaAsyncMemoryResource(enable_ipc=True)
+    rmm.mr.set_current_device_resource(mr)
+    assert rmm.mr.get_current_device_resource_type() is type(mr)
 
 
 def test_cuda_async_memory_resource_fabric():
@@ -741,6 +725,46 @@ def test_cuda_async_memory_resource_threshold(nelem, alloc):
     array_tester("u1", 2 * nelem, alloc)  # should trigger release
 
 
+@pytest.mark.skipif(
+    not _ASYNC_MANAGED_MEMORY_SUPPORTED,
+    reason="CudaAsyncManagedMemoryResource requires CUDA 13.0+",
+)
+@pytest.mark.parametrize("dtype", _dtypes)
+@pytest.mark.parametrize("nelem", _nelems)
+@pytest.mark.parametrize("alloc", _allocs)
+def test_cuda_async_managed_memory_resource(dtype, nelem, alloc):
+    mr = rmm.mr.experimental.CudaAsyncManagedMemoryResource()
+    rmm.mr.set_current_device_resource(mr)
+    assert rmm.mr.get_current_device_resource_type() is type(mr)
+    array_tester(dtype, nelem, alloc)
+
+
+@pytest.mark.skipif(
+    not _ASYNC_MANAGED_MEMORY_SUPPORTED,
+    reason="CudaAsyncManagedMemoryResource requires CUDA 13.0+",
+)
+@pytest.mark.parametrize("nelems", _nelems)
+def test_cuda_async_managed_memory_resource_stream(nelems):
+    mr = rmm.mr.experimental.CudaAsyncManagedMemoryResource()
+    rmm.mr.set_current_device_resource(mr)
+    stream = Stream()
+    expected = np.full(nelems, 5, dtype="u1")
+    dbuf = rmm.DeviceBuffer.to_device(expected, stream=stream)
+    result = np.asarray(dbuf.copy_to_host())
+    np.testing.assert_equal(expected, result)
+
+
+@pytest.mark.skipif(
+    not _ASYNC_MANAGED_MEMORY_SUPPORTED,
+    reason="CudaAsyncManagedMemoryResource requires CUDA 13.0+",
+)
+def test_cuda_async_managed_memory_resource_pool_handle():
+    mr = rmm.mr.experimental.CudaAsyncManagedMemoryResource()
+    pool_handle = mr.pool_handle()
+    assert isinstance(pool_handle, int)
+    assert pool_handle != 0
+
+
 @pytest.mark.parametrize(
     "mr",
     [
@@ -782,7 +806,7 @@ def test_tracking_resource_adaptor():
     for i in range(9, 0, -2):
         del buffers[i]
 
-    assert mr.get_allocated_bytes() == 5040
+    assert mr.get_allocated_bytes() == 5000
 
     # Push a new Tracking adaptor
     mr2 = rmm.mr.TrackingResourceAdaptor(mr, capture_stacks=True)
@@ -791,8 +815,8 @@ def test_tracking_resource_adaptor():
     for _ in range(2):
         buffers.append(rmm.DeviceBuffer(size=1000))
 
-    assert mr2.get_allocated_bytes() == 2016
-    assert mr.get_allocated_bytes() == 7056
+    assert mr2.get_allocated_bytes() == 2000
+    assert mr.get_allocated_bytes() == 7000
 
     # Ensure we get back a non-empty string for the allocations
     assert len(mr.get_outstanding_allocations_str()) > 0
@@ -808,6 +832,10 @@ def test_tracking_resource_adaptor():
     assert len(mr.get_outstanding_allocations_str()) == 0
 
 
+@pytest.mark.skipif(
+    _IS_INTEGRATED_MEMORY_SYSTEM,
+    reason="Integrated memory systems may kill the process when attempting allocations larger than available memory",
+)
 def test_failure_callback_resource_adaptor():
     retried = [False]
 
@@ -830,6 +858,10 @@ def test_failure_callback_resource_adaptor():
     assert retried[0]
 
 
+@pytest.mark.skipif(
+    _IS_INTEGRATED_MEMORY_SYSTEM,
+    reason="Integrated memory systems may kill the process when attempting allocations larger than available memory",
+)
 def test_failure_callback_resource_adaptor_error():
     def callback(nbytes: int) -> bool:
         raise RuntimeError("MyError")
@@ -857,16 +889,14 @@ def test_prefetch_resource_adaptor(managed):
     # This allocation should be prefetched
     db = rmm.DeviceBuffer.to_device(np.zeros(256, dtype="u1"))
 
-    err, device = runtime.cudaGetDevice()
+    err, device_id = runtime.cudaGetDevice()
     assert err == runtime.cudaError_t.cudaSuccess
 
-    if managed:
-        assert_prefetched(db, device)
+    if managed and _CONCURRENT_MANAGED_ACCESS_SUPPORTED:
+        assert_prefetched(db, device_id)
     db.prefetch()  # just test that it doesn't throw
-    if managed:
-        err, device = runtime.cudaGetDevice()
-        assert err == runtime.cudaError_t.cudaSuccess
-        assert_prefetched(db, device)
+    if managed and _CONCURRENT_MANAGED_ACCESS_SUPPORTED:
+        assert_prefetched(db, device_id)
 
 
 def test_dev_buf_circle_ref_dealloc():
@@ -1144,3 +1174,117 @@ def test_cuda_async_view_memory_resource_custom_pool(dtype, nelem, alloc):
     assert err == runtime.cudaError_t.cudaSuccess
     with pytest.raises(MemoryError):
         array_tester(dtype, nelem, alloc)
+
+
+@pytest.mark.parametrize("dtype", _dtypes)
+@pytest.mark.parametrize("nelem", _nelems)
+@pytest.mark.parametrize("alloc", _allocs)
+def test_pinned_host_memory_resource(dtype, nelem, alloc):
+    """Test PinnedHostMemoryResource as a basic memory resource."""
+    mr = rmm.mr.PinnedHostMemoryResource()
+    rmm.mr.set_current_device_resource(mr)
+    assert rmm.mr.get_current_device_resource_type() is type(mr)
+    array_tester(dtype, nelem, alloc)
+
+
+@pytest.mark.parametrize("dtype", _dtypes)
+@pytest.mark.parametrize("nelem", _nelems)
+@pytest.mark.parametrize("alloc", _allocs)
+def test_pinned_host_memory_resource_with_pool(dtype, nelem, alloc):
+    """Test PinnedHostMemoryResource with PoolMemoryResource."""
+    base_mr = rmm.mr.PinnedHostMemoryResource()
+    mr = rmm.mr.PoolMemoryResource(
+        base_mr,
+        initial_pool_size="4MiB",
+        maximum_pool_size="8MiB",
+    )
+    rmm.mr.set_current_device_resource(mr)
+    assert rmm.mr.get_current_device_resource_type() is type(mr)
+    array_tester(dtype, nelem, alloc)
+
+
+def test_pinned_host_memory_resource_allocate_deallocate():
+    """Test direct allocation and deallocation with PinnedHostMemoryResource."""
+    mr = rmm.mr.PinnedHostMemoryResource()
+
+    # Test various allocation sizes
+    sizes = [256, 1024, 4096, 1024 * 1024]
+    ptrs = []
+
+    for size in sizes:
+        ptr = mr.allocate(size)
+        assert ptr != 0, f"Allocation of {size} bytes returned null pointer"
+        ptrs.append((ptr, size))
+
+    # Deallocate all
+    for ptr, size in ptrs:
+        mr.deallocate(ptr, size)
+
+
+def test_pinned_host_memory_resource_with_device_buffer():
+    """Test PinnedHostMemoryResource with DeviceBuffer."""
+    mr = rmm.mr.PinnedHostMemoryResource()
+    rmm.mr.set_current_device_resource(mr)
+
+    # Test creating various sized buffers
+    sizes = [0, 256, 1024, 4096, 1024 * 1024]
+    for size in sizes:
+        buf = rmm.DeviceBuffer(size=size)
+        assert buf.size == size
+        if size > 0:
+            assert buf.ptr != 0
+            assert buf.capacity() >= size
+        else:
+            assert buf.ptr == 0
+
+
+def test_pinned_host_memory_resource_host_device_access():
+    """Test that pinned memory is accessible from both host and device."""
+    mr = rmm.mr.PinnedHostMemoryResource()
+    rmm.mr.set_current_device_resource(mr)
+
+    # Create test data
+    test_data = np.arange(100, dtype=np.float32)
+
+    # Copy to device using pinned memory
+    device_buf = rmm.DeviceBuffer.to_device(test_data.tobytes())
+
+    # Copy back from device
+    result = np.frombuffer(device_buf.tobytes(), dtype=np.float32)
+
+    # Verify data integrity
+    np.testing.assert_array_equal(test_data, result)
+
+
+def test_pinned_host_memory_resource_type_check():
+    """Test PinnedHostMemoryResource type and inheritance."""
+    mr = rmm.mr.PinnedHostMemoryResource()
+
+    # Check type
+    assert isinstance(mr, rmm.mr.PinnedHostMemoryResource)
+    assert isinstance(mr, rmm.mr.DeviceMemoryResource)
+
+    # Check that it's not an upstream resource adaptor
+    assert not isinstance(mr, rmm.mr.UpstreamResourceAdaptor)
+
+
+@pytest.mark.parametrize(
+    "adaptor_factory",
+    [
+        lambda mr: rmm.mr.StatisticsResourceAdaptor(mr),
+        lambda mr: rmm.mr.TrackingResourceAdaptor(mr),
+        lambda mr: rmm.mr.LimitingResourceAdaptor(
+            mr, allocation_limit=1024 * 1024 * 10
+        ),
+    ],
+)
+def test_pinned_host_memory_resource_with_adaptors(adaptor_factory):
+    """Test PinnedHostMemoryResource with various resource adaptors."""
+    base_mr = rmm.mr.PinnedHostMemoryResource()
+    mr = adaptor_factory(base_mr)
+    rmm.mr.set_current_device_resource(mr)
+
+    # Test with a simple allocation
+    buf = rmm.DeviceBuffer(size=1024)
+    assert buf.size == 1024
+    assert buf.ptr != 0
