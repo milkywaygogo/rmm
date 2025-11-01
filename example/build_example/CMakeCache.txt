@@ -43,7 +43,7 @@ CMAKE_COLOR_MAKEFILE:BOOL=ON
 CMAKE_CUDA_ARCHITECTURES:STRING=50-real;52-real;60-real;61-real;70-real;75-real;80-real;86-real;89-real;90-real;100-real;101-real;120
 
 //CUDA compiler
-CMAKE_CUDA_COMPILER:FILEPATH=/home/runshi/miniconda3/envs/rmm_dev/bin/nvcc
+CMAKE_CUDA_COMPILER:STRING=/home/runshi/miniconda3/envs/rmm_dev/bin/nvcc
 
 //Flags used by the CUDA compiler during all build types.
 CMAKE_CUDA_FLAGS:STRING=
@@ -61,7 +61,7 @@ CMAKE_CUDA_FLAGS_RELEASE:STRING=-O3 -DNDEBUG
 CMAKE_CUDA_FLAGS_RELWITHDEBINFO:STRING=-O2 -g -DNDEBUG
 
 //CXX compiler
-CMAKE_CXX_COMPILER:FILEPATH=/home/runshi/miniconda3/envs/rmm_dev/bin/x86_64-conda-linux-gnu-c++
+CMAKE_CXX_COMPILER:STRING=/home/runshi/miniconda3/envs/rmm_dev/bin/x86_64-conda-linux-gnu-c++
 
 //A wrapper around 'ar' adding the appropriate '--plugin' option
 // for the GCC compiler
